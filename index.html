@@ -828,6 +828,46 @@ html, body {
   padding: 6px 14px;
 }
 
+/* Lista de valores no metadata */
+.meta-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.meta-list:last-child { border-bottom: none; }
+
+.meta-list-key {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: var(--source);
+  padding: 0 0 4px 0;
+}
+
+.meta-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--border2);
+  margin-left: 4px;
+}
+
+.meta-list-item {
+  font-size: .7rem;
+  font-family: var(--mono);
+  color: var(--text);
+  padding: 2px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.meta-list-item::before {
+  content: '–';
+  color: var(--muted2);
+  flex-shrink: 0;
+}
+
 /* Sub-árvore para valores Map<String,String> */
 .meta-node-map {
   display: flex;
@@ -2007,6 +2047,16 @@ function renderMetaValue(k, v) {
       <span class="meta-key">${k}</span>
       <span class="meta-colon">:</span>
       <span class="meta-value">${v}</span>
+    </div>`;
+  }
+  // Valor array (List<String>)
+  if (Array.isArray(v)) {
+    const items = v.map(item =>
+      `<div class="meta-list-item">${item}</div>`
+    ).join('');
+    return `<div class="meta-list">
+      <div class="meta-list-key">${k} [${v.length}]</div>
+      <div class="meta-list-items">${items.length ? items : '<div class="meta-list-item" style="color:var(--muted2)">(vazio)</div>'}</div>
     </div>`;
   }
   // Valor objeto (Map<String,String>)
