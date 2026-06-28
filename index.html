@@ -1109,7 +1109,12 @@ html, body {
   <button class="btn-play" id="btn-play" title="Modo animação">▶ Play</button>
 
   <div class="topbar-actions">
-    <button class="icon-btn" id="btn-paste" title="Colar JSON" style="font-size:.8rem">📋</button>
+    <button class="icon-btn" id="btn-paste" title="Colar JSON">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+        <rect x="5" y="1" width="9" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M5 3H3.5A1.5 1.5 0 002 4.5v9A1.5 1.5 0 003.5 15h7A1.5 1.5 0 0012 13.5V13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
     <button class="meta-step-btn" id="btn-step-meta" title="Metadados do step">META</button>
     <button class="icon-btn" id="btn-legend" title="Legenda" style="font-size:.8rem; font-weight:700; color:var(--muted)">?</button>
     <button class="icon-btn primary" id="btn-load" title="Carregar JSONs">
@@ -1137,8 +1142,8 @@ html, body {
   <button class="layer-dot-btn" data-layer="kept"    title="Mantidos">●</button>
   <button class="layer-dot-btn" data-layer="source"  title="Source">◉</button>
   <button class="layer-dot-btn" data-layer="bbox"    title="BBox">⬜</button>
-  <button class="layer-dot-btn" data-layer="orphan"  title="Fantasma (previous sem diff/source)">👻</button>
-  <button class="layer-dot-btn" data-layer="ignored" title="Ignorado (source sem diff/previous)">⚠️</button>
+  <button class="layer-dot-btn" data-layer="orphan"  title="Fantasma (previous sem diff/source)">◆</button>
+  <button class="layer-dot-btn" data-layer="ignored" title="Ignorado (source sem diff/previous)">◆</button>
 </div>
 
 <!-- LEGEND PANEL -->
@@ -1260,7 +1265,7 @@ html, body {
 <div class="paste-modal" id="paste-modal">
   <div class="paste-box">
     <div class="paste-box-header">
-      <div class="paste-box-title">📋 Colar JSON</div>
+      <div class="paste-box-title">Colar JSON</div>
       <button class="paste-box-close" id="paste-close">✕</button>
     </div>
     <textarea class="paste-textarea" id="paste-textarea"
@@ -1339,11 +1344,18 @@ html, body {
 
 <!-- EMPTY STATE -->
 <div class="empty-overlay" id="empty-overlay">
-  <div class="empty-icon">🗺️</div>
+  <div class="empty-icon">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" opacity=".35">
+      <rect x="4" y="8" width="40" height="32" rx="3" stroke="currentColor" stroke-width="2"/>
+      <path d="M4 16h40M16 8v32" stroke="currentColor" stroke-width="2"/>
+      <circle cx="32" cy="28" r="5" stroke="currentColor" stroke-width="2"/>
+      <path d="M32 23v-3M32 33v3M27 28h-3M37 28h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </div>
   <div class="empty-title">Nenhum snapshot</div>
   <div class="empty-sub">Carregue arquivos JSON para iniciar a auditoria de movimentos</div>
   <button class="empty-btn" id="btn-load-empty">Carregar JSONs</button>
-  <button class="empty-btn" id="btn-paste-empty" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text)">📋 Colar JSON</button>
+  <button class="empty-btn" id="btn-paste-empty" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text)">Colar JSON</button>
 </div>
 
 <script>
