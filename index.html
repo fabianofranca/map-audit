@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Map Audit</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root {
+  --bg:      #0b0d12;
+  --surf:    #13151e;
+  --surf2:   #1a1d28;
+  --border:  #1e2130;
+  --border2: #2a2d3a;
+  --text:    #e2e4ed;
+  --muted:   #5a5f73;
+  --muted2:  #3a3f52;
+  --added:   #22c55e;
+  --removed: #ef4444;
+  --kept:    #64748b;
+  --source:  #3b82f6;
+  --bbox:    #facc15;
+  --orphan:  #f97316;
+  --ignored: #a855f7;
+  --mono: 'JetBrains Mono','Fira Mono',monospace;
+  --sans: 'Inter',system-ui,sans-serif;
+  --topbar-h: 52px;
+  --tl-h: 80px;
+  --sheet-peek: 72px;
+  --sheet-mid: 52vh;
+  --radius: 14px;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ══ TOPBAR ══ */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--topbar-h);
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  z-index: 500;
+}
+
+.topbar-logo {
+  font-size: .8rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+.topbar-logo span { color: var(--source); }
+
+.topbar-snap {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.topbar-snap b { color: var(--text); }
+
+.topbar-ts {
+  font-size: .68rem;
+  font-family: var(--mono);
+  color: var(--muted2);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: none; /* oculto no mobile, visível no desktop */
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  background: var(--surf2);
+  color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: .85rem;
+  transition: background .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.icon-btn:active { background: var(--border2); }
+.icon-btn.primary { background: var(--source); border-color: var(--source); }
+.icon-btn.primary:active { background: #2563eb; }
+
+#file-input { display: none; }
+
+/* ══ MAP fills everything ══ */
+#map {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0; right: 0;
+  bottom: var(--tl-h);
+  z-index: 1;
+}
+
+/* ══ NAV ARROWS over map ══ */
+.map-nav {
+  position: fixed;
+  bottom: calc(var(--tl-h) + var(--sheet-peek) + 8px);
+  left: 0; right: 0;
+  display: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.nav-btn {
+  pointer-events: all;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--surf);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 1.1rem;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  transition: background .12s;
+}
+.nav-btn:active { background: var(--surf2); }
+.nav-btn:disabled { opacity: .25; pointer-events: none; }
+
+/* Zoom control — dark theme + posição correta */
+.leaflet-control-zoom {
+  border: 1px solid var(--border2) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5) !important;
+}
+.leaflet-control-zoom a {
+  background: var(--surf) !important;
+  color: var(--text) !important;
+  border-bottom: 1px solid var(--border2) !important;
+  width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  font-size: 1.1rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.leaflet-control-zoom a:hover {
+  background: var(--surf2) !important;
+  color: var(--source) !important;
+}
+.leaflet-control-zoom-out {
+  border-bottom: none !important;
+}
+/* Attribution — dark theme em todos os layouts */
+.leaflet-control-attribution {
+  font-size: .55rem !important;
+  background: rgba(13,15,20,.75) !important;
+  color: var(--muted) !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+}
+.leaflet-control-attribution a { color: var(--source) !important; }
+
+/* Mobile: zoom acima das setas, attribution oculto */
+.leaflet-bottom.leaflet-right {
+  bottom: calc(var(--tl-h) + var(--sheet-peek) + 56px) !important;
+  right: 12px !important;
+}
+.leaflet-bottom.leaflet-left {
+  display: none !important;
+}
+
+/* Desktop: tudo visível */
+@media (min-width: 768px) {
+  .leaflet-bottom.leaflet-right {
+    bottom: calc(var(--tl-h) + 12px) !important;
+    right: 12px !important;
+  }
+  .leaflet-bottom.leaflet-left {
+    display: block !important;
+    bottom: calc(var(--tl-h) + 4px) !important;
+    left: 8px !important;
+  }
+}
+
+/* ══ LAYER PILL over map ══ */
+.layer-pill {
+  position: fixed;
+  top: calc(var(--topbar-h) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  background: rgba(13,15,20,.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border2);
+  border-radius: 99px;
+  padding: 5px 8px;
+  z-index: 400;
+}
+
+.layer-dot-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--surf2);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .65rem;
+  font-weight: 700;
+  transition: opacity .15s, transform .1s;
+  position: relative;
+}
+.layer-dot-btn:active { transform: scale(.9); }
+.layer-dot-btn.off { opacity: .28; }
+.layer-dot-btn[data-layer="added"]   { border-color: var(--added);   color: var(--added); }
+.layer-dot-btn[data-layer="removed"] { border-color: var(--removed); color: var(--removed); }
+.layer-dot-btn[data-layer="kept"]    { border-color: var(--kept);    color: var(--kept); }
+.layer-dot-btn[data-layer="source"]  { border-color: var(--source);  color: var(--source); }
+.layer-dot-btn[data-layer="bbox"]    { border-color: var(--bbox);    color: var(--bbox); }
+.layer-dot-btn[data-layer="orphan"]  { border-color: var(--orphan);  color: var(--orphan); }
+.layer-dot-btn[data-layer="ignored"] { border-color: var(--ignored); color: var(--ignored); }
+
+/* ══ TIMELINE BAR ══ */
+.timeline-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--tl-h);
+  background: var(--surf);
+  border-top: 1px solid var(--border);
+  z-index: 465; /* acima da sheet (460) para ficar sempre visível */
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.timeline-bar::-webkit-scrollbar { display: none; }
+
+.tl-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background .12s;
+  min-width: 52px;
+  scroll-snap-align: center;
+}
+.tl-node:active { background: var(--surf2); }
+.tl-node.active { background: #1a2540; }
+
+.tl-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+}
+.tl-bar-a { width: 8px; background: var(--added);   border-radius: 2px 2px 0 0; min-height: 2px; }
+.tl-bar-r { width: 8px; background: var(--removed); border-radius: 2px 2px 0 0; min-height: 2px; }
+
+.tl-idx {
+  font-size: .62rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.tl-node.active .tl-idx { color: var(--source); font-weight: 700; }
+
+.tl-delta {
+  font-size: .58rem;
+  font-family: var(--mono);
+  color: var(--muted2);
+  white-space: nowrap;
+}
+.tl-node.active .tl-delta { color: var(--muted); }
+
+.tl-sep {
+  width: 12px; height: 1px;
+  background: var(--border2);
+  flex-shrink: 0;
+  margin: 0 -2px;
+  margin-bottom: 20px;
+}
+
+/* ══ BOTTOM SHEET OVERLAY ══ */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  bottom: var(--tl-h);
+  background: rgba(0,0,0,.5);
+  z-index: 459;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s;
+}
+.sheet-overlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ══ BOTTOM SHEET ══ */
+.sheet {
+  position: fixed;
+  left: 0; right: 0;
+  /* ancora no topo da área útil — nunca ultrapassa o topbar */
+  top: var(--topbar-h);
+  bottom: var(--tl-h);
+  background: var(--surf);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  z-index: 460;
+  display: flex;
+  flex-direction: column;
+  /* peek: só a alça visível no fundo */
+  transform: translateY(calc(100% - var(--sheet-peek)));
+  transition: transform .3s cubic-bezier(.32,.72,0,1);
+  will-change: transform;
+}
+.sheet.mid  { transform: translateY(calc(100% - var(--sheet-mid))); }
+.sheet.open { transform: translateY(0); }
+
+.sheet-handle-area {
+  padding: 10px 0 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  flex-shrink: 0;
+  user-select: none;
+}
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: var(--border2);
+  border-radius: 2px;
+}
+
+.sheet-peek-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 8px;
+  flex-shrink: 0;
+}
+
+
+
+.sheet-peek-title {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+.stats-row {
+  display: flex;
+  gap: 6px;
+}
+
+.stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .68rem;
+  font-family: var(--mono);
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid;
+}
+.stat-chip.added   { color: var(--added);   border-color: #16412a; background: #0d2518; }
+.stat-chip.removed { color: var(--removed); border-color: #3d1515; background: #240d0d; }
+.stat-chip.kept    { color: var(--kept);    border-color: #1e2838; background: #131a24; }
+.stat-chip.source  { color: var(--source);  border-color: #1a2540; background: #0d1a30; }
+.stat-chip.orphan  { color: var(--orphan);  border-color: #2a1500; background: #1a0d00; }
+.stat-chip.ignored { color: var(--ignored); border-color: #200d30; background: #140820; }
+
+.sheet-divider {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.point-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.point-list::-webkit-scrollbar { width: 3px; }
+.point-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.point-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.point-entry:active { background: var(--surf2); }
+.point-entry.added   { border-left-color: var(--added); }
+.point-entry.removed { border-left-color: var(--removed); }
+.point-entry.kept    { border-left-color: var(--kept); }
+.point-entry.source-only { border-left-color: var(--source); }
+
+.pe-icon {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.pe-icon.added   { background: #0d2518; color: var(--added); }
+.pe-icon.removed { background: #240d0d; color: var(--removed); }
+.pe-icon.kept    { background: #131a24; color: var(--kept); }
+.pe-icon.source-only { background: #0d1a30; color: var(--source); }
+
+.pe-body { flex: 1; min-width: 0; }
+.pe-name {
+  font-size: .85rem;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pe-name.struck { text-decoration: line-through; color: var(--muted); }
+.pe-id {
+  font-size: .7rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+.pe-tag {
+  font-size: .82rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  line-height: 1;
+  opacity: .85;
+}
+.pe-tag.added   { color: var(--added); }
+.pe-tag.removed { color: var(--removed); }
+.pe-tag.kept    { color: var(--kept); }
+.pe-tag.source  { color: var(--source); }
+.pe-tag.source-only { color: var(--source); }
+.pe-icon.orphan  { background: #2a1500; color: var(--orphan); }
+.pe-icon.ignored { background: #200d30; color: var(--ignored); }
+.pe-tag.orphan   { color: var(--orphan); }
+.pe-tag.ignored  { color: var(--ignored); }
+
+/* ══ EMPTY STATE ══ */
+.empty-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 600;
+}
+.empty-overlay.hidden { display: none; }
+.empty-icon { font-size: 3rem; opacity: .35; }
+.empty-title { font-size: 1rem; font-weight: 700; color: var(--muted); }
+.empty-sub { font-size: .82rem; color: var(--muted2); text-align: center; padding: 0 32px; }
+.empty-btn {
+  background: var(--source);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 28px;
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.empty-btn:active { background: #2563eb; }
+
+/* ══ Leaflet popup ══ */
+.leaflet-popup-content-wrapper {
+  background: #13151e;
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.7);
+}
+.leaflet-popup-tip { background: #13151e; }
+.leaflet-popup-content { font-size: .82rem; line-height: 1.6; }
+.popup-id   { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+.popup-name { font-weight: 700; font-size: .9rem; margin: 2px 0 4px; }
+.popup-coords { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+.popup-tag {
+  display: inline-block; margin-top: 6px;
+  font-size: .66rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+}
+.popup-tag.added   { background:#0d2518; color:var(--added); }
+.popup-tag.removed { background:#240d0d; color:var(--removed); }
+.popup-tag.kept    { background:#131a24; color:var(--kept); }
+.popup-tag.source-only { background:#0d1a30; color:var(--source); }
+
+/* ══ LEGEND PANEL ══ */
+.legend-panel {
+  position: fixed;
+  top: calc(var(--topbar-h) + 8px);
+  right: 10px;
+  width: 222px;
+  background: rgba(13,15,20,.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  z-index: 510;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6);
+  transform-origin: top right;
+  transform: scale(.92);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .18s cubic-bezier(.32,.72,0,1), opacity .18s;
+}
+.legend-panel.open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.legend-panel-header {
+  padding: 10px 14px 8px;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.legend-section {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.legend-section:last-child { border-bottom: none; }
+
+.legend-section-title {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  padding: 0 14px 6px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+}
+
+.legend-icon {
+  width: 28px; height: 28px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.legend-icon svg { display: block; }
+
+.legend-text { flex: 1; min-width: 0; }
+.legend-label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.legend-desc {
+  font-size: .68rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.legend-bbox-swatch {
+  width: 28px; height: 14px;
+  border: 1.5px dashed var(--bbox);
+  border-radius: 3px;
+  background: rgba(250,204,21,.06);
+  flex-shrink: 0;
+}
+
+/* ══ METADATA DRAWER ══ */
+.meta-drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: var(--tl-h);
+  width: 280px;
+  background: var(--surf);
+  border-left: 1px solid var(--border2);
+  z-index: 520;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .25s cubic-bezier(.32,.72,0,1);
+  box-shadow: -8px 0 32px rgba(0,0,0,.4);
+}
+.meta-drawer.open { transform: translateX(0); }
+
+.meta-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.meta-drawer-title {
+  flex: 1;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta-drawer-close {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.meta-drawer-close:active { background: var(--surf2); }
+
+.meta-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.meta-drawer-body::-webkit-scrollbar { width: 3px; }
+.meta-drawer-body::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.meta-section {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.meta-section:last-child { border-bottom: none; }
+
+.meta-section-title {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  padding: 4px 14px 6px;
+}
+
+/* Árvore de metadados */
+.meta-tree { padding: 0 14px; }
+
+.meta-node {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+.meta-node:last-child { border-bottom: none; }
+
+.meta-key {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: var(--source);
+  flex-shrink: 0;
+  max-width: 45%;
+  word-break: break-all;
+}
+.meta-colon {
+  font-size: .72rem;
+  color: var(--muted2);
+  flex-shrink: 0;
+}
+.meta-value {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: var(--text);
+  word-break: break-all;
+  flex: 1;
+}
+.meta-empty {
+  font-size: .72rem;
+  color: var(--muted2);
+  font-style: italic;
+  padding: 6px 14px;
+}
+
+/* Sub-árvore para valores Map<String,String> */
+.meta-node-map {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.meta-node-map:last-child { border-bottom: none; }
+
+.meta-node-map-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.meta-node-map-header:active { opacity: .7; }
+
+.meta-map-key {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: var(--source);
+  flex-shrink: 0;
+}
+.meta-map-arrow {
+  font-size: .6rem;
+  color: var(--muted2);
+  transition: transform .15s;
+  flex-shrink: 0;
+}
+.meta-map-arrow.open { transform: rotate(90deg); }
+.meta-map-type {
+  font-size: .62rem;
+  color: var(--muted2);
+  font-family: var(--mono);
+}
+
+.meta-subtree {
+  padding-left: 14px;
+  border-left: 1.5px solid var(--border2);
+  margin: 4px 0 2px 6px;
+  display: none;
+}
+.meta-subtree.open { display: block; }
+
+.meta-subtree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.meta-subtree-row:last-child { border-bottom: none; }
+
+.meta-sub-key   { font-size: .68rem; font-family: var(--mono); color: var(--kept); flex-shrink: 0; }
+.meta-sub-colon { font-size: .68rem; color: var(--muted2); flex-shrink: 0; }
+.meta-sub-value { font-size: .68rem; font-family: var(--mono); color: var(--text); word-break: break-all; flex: 1; }
+
+/* Tocar no ponto-entry abre o drawer */
+.point-entry { cursor: pointer; }
+
+/* Botão de info no topbar */
+.meta-step-btn {
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surf2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.meta-step-btn:active { background: var(--border2); }
+
+/* Botão de animação */
+.btn-play {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: .75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s, background .15s;
+  flex-shrink: 0;
+}
+.btn-play:hover { border-color: var(--added); color: var(--added); }
+.btn-play.playing {
+  background: #0d2518;
+  border-color: var(--added);
+  color: var(--added);
+}
+
+/* Painel de velocidade */
+.speed-panel {
+  position: fixed;
+  top: calc(var(--topbar-h) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13,15,20,.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  z-index: 510;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.speed-panel.open { display: flex; }
+
+.speed-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.speed-options {
+  display: flex;
+  gap: 5px;
+}
+.speed-opt {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 5px;
+  border: 1px solid var(--border2);
+  background: var(--surf2);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.speed-opt:hover { border-color: var(--added); color: var(--added); }
+.speed-opt.active { background: #0d2518; border-color: var(--added); color: var(--added); }
+
+.anim-progress {
+  height: 2px;
+  background: var(--border2);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.anim-progress-bar {
+  height: 100%;
+  background: var(--added);
+  border-radius: 1px;
+  transition: width .1s linear;
+  width: 0%;
+}
+
+/* Navegação no topbar — só desktop */
+.topbar-nav {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.topbar-nav-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: var(--surf2);
+  color: var(--text);
+  font-size: .8rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s;
+}
+.topbar-nav-btn:hover:not(:disabled) { border-color: var(--source); color: var(--source); }
+.topbar-nav-btn:disabled { opacity: .25; cursor: default; }
+
+/* Mobile: drawer full width */
+@media (max-width: 767px) {
+  .meta-drawer {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border2);
+  }
+}
+
+/* ══ DESKTOP: sidebar layout ══ */
+@media (min-width: 768px) {
+  :root { --tl-h: 100px; }
+
+  #map {
+    left: 300px;
+  }
+
+  .desktop-sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    width: 300px;
+    bottom: var(--tl-h);
+    background: var(--surf);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 300;
+    overflow: hidden;
+  }
+
+  .desktop-sidebar-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .desktop-sidebar .point-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .desktop-sidebar-stats {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .ds-stat {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+  }
+  .ds-stat-label { font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .ds-stat-value { font-size: 1.1rem; font-weight: 700; font-family: var(--mono); margin-top: 2px; }
+  .ds-stat-value.added   { color: var(--added); }
+  .ds-stat-value.removed { color: var(--removed); }
+  .ds-stat-value.kept    { color: var(--kept); }
+  .ds-stat-value.source  { color: var(--source); }
+
+  /* hide mobile-only */
+  .sheet        { display: none !important; }
+  .map-nav      { display: none; }
+  .layer-pill   { left: calc(300px + 50%); transform: translateX(-50%); }
+  /* nav no topbar desktop */
+  .topbar-nav   { display: flex !important; }
+
+  .timeline-bar { padding: 0 14px; }
+  .tl-node      { min-width: 58px; }
+  .topbar-ts    { display: block; }
+
+  .legend-panel { right: 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-logo">Map <span>Audit</span></div>
+  <div class="topbar-snap" id="snap-counter">—</div>
+  <div class="topbar-ts"  id="snap-ts"></div>
+  <div class="topbar-nav" id="topbar-nav">
+    <button class="topbar-nav-btn" id="btn-prev-top" disabled>◀</button>
+    <button class="topbar-nav-btn" id="btn-next-top" disabled>▶</button>
+  </div>
+  <button class="btn-play" id="btn-play" title="Modo animação">▶ Play</button>
+
+  <div class="topbar-actions">
+    <button class="meta-step-btn" id="btn-step-meta" title="Metadados do step">META</button>
+    <button class="icon-btn" id="btn-legend" title="Legenda" style="font-size:.8rem; font-weight:700; color:var(--muted)">?</button>
+    <button class="icon-btn primary" id="btn-load" title="Carregar JSONs">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2M8 2v8M5 5l3-3 3 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+<input type="file" id="file-input" accept=".json" multiple/>
+
+<!-- METADATA DRAWER -->
+<div class="meta-drawer" id="meta-drawer">
+  <div class="meta-drawer-header">
+    <div class="meta-drawer-title" id="meta-drawer-title">Metadados</div>
+    <button class="meta-drawer-close" id="meta-drawer-close">✕</button>
+  </div>
+  <div class="meta-drawer-body" id="meta-drawer-body"></div>
+</div>
+
+<!-- LAYER PILL -->
+<div class="layer-pill">
+  <button class="layer-dot-btn" data-layer="added"   title="Adicionados">▲</button>
+  <button class="layer-dot-btn" data-layer="removed" title="Removidos">▼</button>
+  <button class="layer-dot-btn" data-layer="kept"    title="Mantidos">●</button>
+  <button class="layer-dot-btn" data-layer="source"  title="Source">◉</button>
+  <button class="layer-dot-btn" data-layer="bbox"    title="BBox">⬜</button>
+  <button class="layer-dot-btn" data-layer="orphan"  title="Fantasma (previous sem diff/source)">👻</button>
+  <button class="layer-dot-btn" data-layer="ignored" title="Ignorado (source sem diff/previous)">⚠️</button>
+</div>
+
+<!-- LEGEND PANEL -->
+<div class="legend-panel" id="legend-panel">
+  <div class="legend-panel-header">Legenda</div>
+
+  <div class="legend-section">
+    <div class="legend-section-title">Marcadores de pontos</div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#0d2518" stroke="#22c55e" stroke-width="1.5"/>
+          <polygon points="14,6 22,22 6,22" fill="#22c55e"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#22c55e">▲ Adicionado</div>
+        <div class="legend-desc">Ponto em <code>diff.add</code> — entrou neste snapshot</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#240d0d" stroke="#ef4444" stroke-width="1.5"/>
+          <polygon points="6,6 22,6 14,22" fill="#ef4444"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#ef4444">▼ Removido</div>
+        <div class="legend-desc">Ponto em <code>diff.remove</code> — saiu neste snapshot</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#131a24" stroke="#64748b" stroke-width="1.5"/>
+          <circle cx="14" cy="14" r="6" fill="#64748b"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#64748b">● Mantido</div>
+        <div class="legend-desc">Em <code>previous</code> e <code>source</code> — não mudou</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#0d1a30" stroke="#3b82f6" stroke-width="1.5"/>
+          <circle cx="14" cy="14" r="6" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#3b82f6">◉ Source-only</div>
+        <div class="legend-desc">Na <code>source</code> mas ausente no <code>diff</code> — inconsistência</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-section">
+    <div class="legend-section-title">Alertas de integridade</div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#2a1500" stroke="#f97316" stroke-width="1.5"/>
+          <polygon points="14,5 23,14 14,23 5,14" fill="#f97316"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#f97316">◆ Fantasma</div>
+        <div class="legend-desc">Estava em <code>previous</code>, não aparece no <code>diff</code> nem na <code>source</code> — pin perdido no app</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="legend-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="#200d30" stroke="#a855f7" stroke-width="1.5"/>
+          <polygon points="14,5 23,14 14,23 5,14" fill="#a855f7"/>
+        </svg>
+      </div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#a855f7">◆ Ignorado</div>
+        <div class="legend-desc">Veio da <code>source</code>, não estava no <code>previous</code> e não entrou no <code>diff</code> — app ignorou o retorno</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-section">
+    <div class="legend-section-title">Área do mapa</div>
+    <div class="legend-row">
+      <div class="legend-bbox-swatch"></div>
+      <div class="legend-text">
+        <div class="legend-label" style="color:#facc15">Bounding Box</div>
+        <div class="legend-desc">Região visível do mapa no momento da requisição</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-section">
+    <div class="legend-section-title">Timeline</div>
+    <div class="legend-row" style="gap:8px; align-items:flex-start; padding-top:6px">
+      <div style="display:flex;align-items:flex-end;gap:2px;height:24px;flex-shrink:0">
+        <div style="width:8px;height:18px;background:#22c55e;border-radius:2px 2px 0 0"></div>
+        <div style="width:8px;height:10px;background:#ef4444;border-radius:2px 2px 0 0"></div>
+      </div>
+      <div class="legend-text">
+        <div class="legend-desc">Barra <span style="color:#22c55e">verde</span> = pontos adicionados · Barra <span style="color:#ef4444">vermelha</span> = removidos · Altura proporcional ao volume</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SPEED PANEL -->
+<div class="speed-panel" id="speed-panel">
+  <div class="speed-label">Velocidade de animação</div>
+  <div class="speed-options">
+    <button class="speed-opt" data-speed="0.5">0.5×</button>
+    <button class="speed-opt active" data-speed="1">1×</button>
+    <button class="speed-opt" data-speed="2">2×</button>
+    <button class="speed-opt" data-speed="4">4×</button>
+    <button class="speed-opt" data-speed="10">10×</button>
+  </div>
+  <div class="anim-progress">
+    <div class="anim-progress-bar" id="anim-progress-bar"></div>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- NAV ARROWS -->
+<div class="map-nav">
+  <button class="nav-btn" id="btn-prev" disabled>◀</button>
+  <button class="nav-btn" id="btn-next" disabled>▶</button>
+</div>
+
+<!-- DESKTOP SIDEBAR -->
+<div class="desktop-sidebar" id="desktop-sidebar">
+  <div class="desktop-sidebar-header">Pontos do snapshot</div>
+  <div class="point-list" id="desktop-point-list">
+    <div style="padding:20px 14px; color:var(--muted); font-size:.8rem">Nenhum snapshot.</div>
+  </div>
+  <div class="desktop-sidebar-stats" id="desktop-stats" style="display:none">
+    <div class="ds-stat"><div class="ds-stat-label">Adicionados</div><div class="ds-stat-value added"   id="ds-added">0</div></div>
+    <div class="ds-stat"><div class="ds-stat-label">Removidos</div>  <div class="ds-stat-value removed" id="ds-removed">0</div></div>
+    <div class="ds-stat"><div class="ds-stat-label">Mantidos</div>   <div class="ds-stat-value kept"    id="ds-kept">0</div></div>
+    <div class="ds-stat"><div class="ds-stat-label">Source total</div><div class="ds-stat-value source" id="ds-source">0</div></div>
+    <div class="ds-stat"><div class="ds-stat-label">Fantasmas</div>  <div class="ds-stat-value" style="color:var(--orphan)"  id="ds-orphan">0</div></div>
+    <div class="ds-stat"><div class="ds-stat-label">Ignorados</div>  <div class="ds-stat-value" style="color:var(--ignored)" id="ds-ignored">0</div></div>
+  </div>
+</div>
+
+<!-- SHEET OVERLAY -->
+<div class="sheet-overlay" id="sheet-overlay"></div>
+
+<!-- MOBILE BOTTOM SHEET -->
+<div class="sheet" id="sheet">
+  <div class="sheet-handle-area" id="sheet-handle">
+    <div class="sheet-handle"></div>
+    <div class="sheet-peek-row">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+        <div class="sheet-peek-title" id="sheet-title">Pontos do snapshot</div>
+        <div id="sheet-ts" style="font-size:.65rem;color:var(--muted);font-family:var(--mono)"></div>
+      </div>
+      <div class="stats-row" id="stats-row"></div>
+    </div>
+  </div>
+  <div class="sheet-divider"></div>
+  <div class="point-list" id="mobile-point-list">
+    <div style="padding:20px 16px; color:var(--muted); font-size:.8rem">Nenhum snapshot.</div>
+  </div>
+</div>
+
+<!-- TIMELINE -->
+<div class="timeline-bar" id="timeline-bar"></div>
+
+<!-- EMPTY STATE -->
+<div class="empty-overlay" id="empty-overlay">
+  <div class="empty-icon">🗺️</div>
+  <div class="empty-title">Nenhum snapshot</div>
+  <div class="empty-sub">Carregue arquivos JSON para iniciar a auditoria de movimentos</div>
+  <button class="empty-btn" id="btn-load-empty">Carregar JSONs</button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  MAP
+// ══════════════════════════════════════════════
+const map = L.map('map', { zoomControl: false, attributionControl: false, zoomSnap: 0, zoomDelta: 0.5 }).setView([-19.9167, -43.9345], 13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19
+}).addTo(map);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.control.attribution({ position: 'bottomleft', prefix: false })
+  .addAttribution('© <a href="https://openstreetmap.org">OSM</a> © <a href="https://carto.com">CARTO</a>')
+  .addTo(map);
+
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+let snapshots    = [];
+let currentIdx   = -1;
+let activeMarkers = [];
+let bboxLayer    = null;
+const layerVisible = { added:true, removed:true, kept:true, source:true, bbox:true, orphan:true, ignored:true };
+
+// ══════════════════════════════════════════════
+//  SAMPLE DATA
+// ══════════════════════════════════════════════
+const SAMPLE = [
+  {
+    requestId:"req-001", timestamp:"2026-06-27T10:00:00.000Z",
+    boundingBox:{ northEast:{lat:-19.87,lng:-43.88}, southWest:{lat:-19.96,lng:-44.01} },
+    previous:{ points:[] },
+    source:{ points:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-002",name:"Mercado Central",    lat:-19.9334,lng:-43.9386},
+      {id:"poi-003",name:"Parque Mangabeiras", lat:-19.9024,lng:-43.9350}
+    ]},
+    diff:{ add:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-002",name:"Mercado Central",    lat:-19.9334,lng:-43.9386},
+      {id:"poi-003",name:"Parque Mangabeiras", lat:-19.9024,lng:-43.9350}
+    ], remove:[] }
+  },
+  {
+    requestId:"req-002", timestamp:"2026-06-27T10:05:23.000Z",
+    boundingBox:{ northEast:{lat:-19.88,lng:-43.87}, southWest:{lat:-19.95,lng:-43.99} },
+    previous:{ points:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-002",name:"Mercado Central",    lat:-19.9334,lng:-43.9386},
+      {id:"poi-003",name:"Parque Mangabeiras", lat:-19.9024,lng:-43.9350}
+    ]},
+    source:{ points:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-004",name:"Shopping Diamond",   lat:-19.9291,lng:-43.9413},
+      {id:"poi-005",name:"Museu de Arte",      lat:-19.9217,lng:-43.9384}
+    ]},
+    diff:{ add:[
+      {id:"poi-004",name:"Shopping Diamond",   lat:-19.9291,lng:-43.9413},
+      {id:"poi-005",name:"Museu de Arte",      lat:-19.9217,lng:-43.9384}
+    ], remove:[
+      {id:"poi-002",name:"Mercado Central"},
+      {id:"poi-003",name:"Parque Mangabeiras"}
+    ]}
+  },
+  {
+    requestId:"req-003", timestamp:"2026-06-27T10:11:47.000Z",
+    boundingBox:{ northEast:{lat:-19.90,lng:-43.90}, southWest:{lat:-19.96,lng:-43.98} },
+    previous:{ points:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-004",name:"Shopping Diamond",   lat:-19.9291,lng:-43.9413},
+      {id:"poi-005",name:"Museu de Arte",      lat:-19.9217,lng:-43.9384}
+    ]},
+    source:{ points:[
+      {id:"poi-001",name:"Praça da Liberdade", lat:-19.9167,lng:-43.9345},
+      {id:"poi-004",name:"Shopping Diamond",   lat:-19.9291,lng:-43.9413},
+      {id:"poi-006",name:"Terminal Rodoviário",lat:-19.9393,lng:-43.9493},
+      {id:"poi-007",name:"Estádio Mineirão",   lat:-19.8656,lng:-43.9711}
+    ]},
+    diff:{ add:[
+      {id:"poi-006",name:"Terminal Rodoviário",lat:-19.9393,lng:-43.9493},
+      {id:"poi-007",name:"Estádio Mineirão",   lat:-19.8656,lng:-43.9711}
+    ], remove:[
+      {id:"poi-005",name:"Museu de Arte"}
+    ]}
+  }
+];
+
+// ══════════════════════════════════════════════
+//  ICONS
+// ══════════════════════════════════════════════
+function makeIcon(type) {
+  const C = {
+    added:      { c:'#22c55e', bg:'#0d2518', shape:'up'     },
+    removed:    { c:'#ef4444', bg:'#240d0d', shape:'down'   },
+    kept:       { c:'#64748b', bg:'#131a24', shape:'dot'    },
+    source:     { c:'#3b82f6', bg:'#0d1a30', shape:'dot'    },
+    orphan:     { c:'#f97316', bg:'#2a1500', shape:'diamond' },
+    ignored:    { c:'#a855f7', bg:'#200d30', shape:'diamond' },
+  }[type] || { c:'#888', bg:'#222', shape:'dot' };
+
+  let inner = '';
+  if (C.shape === 'up')      inner = `<polygon points="14,6 22,22 6,22" fill="${C.c}"/>`;
+  else if (C.shape === 'down')    inner = `<polygon points="6,6 22,6 14,22" fill="${C.c}"/>`;
+  else if (C.shape === 'diamond') inner = `<polygon points="14,5 23,14 14,23 5,14" fill="${C.c}"/>`;
+  else inner = `<circle cx="14" cy="14" r="6" fill="${C.c}"/>`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+    <circle cx="14" cy="14" r="13" fill="${C.bg}" stroke="${C.c}" stroke-width="1.5"/>
+    ${inner}
+  </svg>`;
+  return L.divIcon({ html:svg, className:'', iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-16] });
+}
+
+const LABELS = { added:'▲ Adicionado', removed:'▼ Removido', kept:'● Mantido', source:'◉ Source', orphan:'◆ Fantasma', ignored:'◆ Ignorado' };
+const TAGS   = { added:'ADD', removed:'REM', kept:'OK', source:'SRC', orphan:'FAN', ignored:'IGN' };
+
+// ══════════════════════════════════════════════
+//  CLASSIFY
+//
+//  Cada ponto retornado carrega um Set "layers" indicando
+//  em quais listas ele aparece de forma independente:
+//    added   → está em diff.add
+//    removed → está em diff.remove
+//    kept    → estava em previous e NÃO foi mencionado no diff
+//              (o app não precisou buscar da fonte — otimização)
+//    source  → está em source.points (independente do diff)
+//
+//  O render decide o ícone com base nos toggles ativos,
+//  sem nenhuma ligação implícita entre as listas.
+// ══════════════════════════════════════════════
+function classify(snap) {
+  const prevList   = snap.previous?.points || [];
+  const sourceList = snap.source?.points   || [];
+  const addList    = snap.diff?.add        || [];
+  const remList    = snap.diff?.remove     || [];
+
+  const prevIds   = new Set(prevList.map(p => p.id));
+  const sourceIds = new Set(sourceList.map(p => p.id));
+  const addIds    = new Set(addList.map(p => p.id));
+  const removeIds = new Set(remList.map(p => p.id));
+
+  // Mapa id → dados do ponto (coords vêm de qualquer lista que os tenha)
+  const byId = {};
+  const reg  = list => list.forEach(p => { byId[p.id] = { ...(byId[p.id] || {}), ...p }; });
+  reg(prevList);
+  reg(sourceList);
+  reg(addList);
+
+  // Coleta todos os ids únicos envolvidos neste snapshot
+  const allIds = new Set([...prevIds, ...sourceIds, ...addIds, ...removeIds]);
+
+  const out = [];
+  allIds.forEach(id => {
+    const layers = new Set();
+    if (addIds.has(id))    layers.add('added');
+    if (removeIds.has(id)) layers.add('removed');
+    if (sourceIds.has(id)) layers.add('source');
+    if (prevIds.has(id) && !addIds.has(id) && !removeIds.has(id))
+      layers.add('kept');
+    // Fantasma: estava no previous, não aparece no diff nem na source
+    if (prevIds.has(id) && !addIds.has(id) && !removeIds.has(id) && !sourceIds.has(id))
+      layers.add('orphan');
+    // Ignorado: veio da source, não estava no previous e não está no diff
+    if (sourceIds.has(id) && !prevIds.has(id) && !addIds.has(id) && !removeIds.has(id))
+      layers.add('ignored');
+
+    const base = byId[id] || remList.find(p => p.id === id) || { id };
+    out.push({ ...base, layers });
+  });
+  return out;
+}
+
+// Dada a lista de layers do ponto e os toggles ativos,
+// retorna o tipo a renderizar ou null se nenhum toggle cobre este ponto.
+//
+// Todos os toggles são completamente independentes entre si.
+// Um ponto pode pertencer a múltiplas layers simultaneamente — inclusive
+// combinações anômalas como {added, removed, source} (bug grave) ou
+// {removed, source} (saiu do diff mas source ainda retornou).
+//
+// A função percorre a precedência e retorna o PRIMEIRO tipo cujo toggle
+// esteja ativo. Source é sempre o último fallback — aparece quando
+// o ponto existe na source e todos os outros toggles relevantes estão off.
+//
+// Exemplos:
+//   {added, source}          add=on             → 'added'
+//   {added, source}          add=off, src=on    → 'source'
+//   {added, source}          add=off, src=off   → null
+//   {removed, source}        rem=on             → 'removed'
+//   {removed, source}        rem=off, src=on    → 'source'
+//   {added, removed, source} add=on, rem=on     → 'added'  (precedência)
+//   {added, removed, source} add=off, rem=on    → 'removed'
+//   {added, removed, source} add=off, rem=off, src=on → 'source'
+//   {added}  (sem source)    add=off, src=on    → null
+//   {orphan} (sem source)    orp=off, src=on    → null
+function resolveRenderType(layers) {
+  if (layers.has('added')   && layerVisible.added)   return 'added';
+  if (layers.has('removed') && layerVisible.removed)  return 'removed';
+  if (layers.has('orphan')  && layerVisible.orphan)   return 'orphan';
+  if (layers.has('ignored') && layerVisible.ignored)  return 'ignored';
+  if (layers.has('kept')    && layerVisible.kept)     return 'kept';
+  if (layers.has('source')  && layerVisible.source)   return 'source';
+  return null;
+}
+
+// ══════════════════════════════════════════════
+//  RENDER SNAPSHOT
+// ══════════════════════════════════════════════
+function renderSnapshot(idx) {
+  currentIdx = idx;
+  activeMarkers.forEach(m => map.removeLayer(m));
+  activeMarkers = [];
+  if (bboxLayer) { map.removeLayer(bboxLayer); bboxLayer = null; }
+
+  const snap   = snapshots[idx];
+  const points = classify(snap);
+
+  // BBox
+  if (layerVisible.bbox && snap.boundingBox) {
+    const {northEast:ne, southWest:sw} = snap.boundingBox;
+    bboxLayer = L.rectangle([[sw.lat,sw.lng],[ne.lat,ne.lng]], {
+      color:'#facc15', weight:1.5, dashArray:'5 5',
+      fillColor:'#facc15', fillOpacity:.04, interactive:false
+    }).addTo(map);
+  }
+
+  // Markers
+  points.forEach(pt => {
+    if (pt.lat==null || pt.lng==null) return;
+    const renderType = resolveRenderType(pt.layers);
+    if (!renderType) return;
+    const m = L.marker([pt.lat,pt.lng], {icon:makeIcon(renderType)})
+      .bindPopup(`<div class="popup-id">${pt.id}</div>
+        <div class="popup-name">${pt.name||'(sem nome)'}</div>
+        <div class="popup-coords">${pt.lat?.toFixed(6)}, ${pt.lng?.toFixed(6)}</div>
+        <span class="popup-tag ${renderType}">${LABELS[renderType]}</span>`)
+      .addTo(map);
+    activeMarkers.push(m);
+  });
+
+  // Render lists
+  renderPointList(points, snap);
+
+  // Timeline
+  document.querySelectorAll('.tl-node').forEach((n,i) => {
+    n.classList.toggle('active', i===idx);
+    if (i===idx) n.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  });
+
+  // Topbar
+  const ts = new Date(snap.timestamp);
+  document.getElementById('snap-counter').innerHTML = `<b>${idx+1}</b>/<b>${snapshots.length}</b>`;
+  const tsStr = ts.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'medium'});
+  document.getElementById('snap-ts').textContent = tsStr;
+  const sheetTs = document.getElementById('sheet-ts');
+  if (sheetTs) sheetTs.textContent = tsStr;
+
+  // Nav buttons
+  document.getElementById('btn-prev').disabled       = idx===0;
+  document.getElementById('btn-next').disabled       = idx===snapshots.length-1;
+  document.getElementById('btn-prev-top').disabled   = idx===0;
+  document.getElementById('btn-next-top').disabled   = idx===snapshots.length-1;
+
+
+  // Fit
+  if (snap.boundingBox) {
+    const {northEast:ne,southWest:sw} = snap.boundingBox;
+    if (animPlaying) {
+      // Modo animação — simula a tela do device:
+      // O bbox amarelo tem sempre o mesmo tamanho na tela (= tela física do device).
+      // Quando o usuário deu zoom in, o bbox geográfico encolheu.
+      // Para exibir corretamente, o Leaflet precisa dar zoom in proporcional
+      // para que o bbox menor caiba no mesmo retângulo amarelo.
+      //
+      // Solução: calcular o zoom que faz o bbox ATUAL caber no mesmo espaço
+      // em pixels que o bbox de referência (step 1) ocupa no container.
+      // Isso equivale a: zoomAtual = getBoundsZoom(bboxRef) + log2(refSpan/curSpan)
+      // que é o mesmo que: getBoundsZoom(bboxAtual) no tamanho do container
+      // mas forçando o mesmo tamanho de pixel que o ref.
+      const centerLat = (ne.lat + sw.lat) / 2;
+      const centerLng = (ne.lng + sw.lng) / 2;
+
+      // Zoom fixado no startAnim + delta proporcional ao encolhimento do bbox
+      // animBaseZoom foi calculado com o container em tamanho estável (antes de resize mobile)
+      const refBB      = snapshots[0].boundingBox;
+      const refLatSpan = Math.abs(refBB.northEast.lat - refBB.southWest.lat);
+      const curLatSpan = Math.abs(ne.lat - sw.lat);
+      const zoomDelta  = Math.log2(refLatSpan / curLatSpan);
+      const targetZoom = (animBaseZoom ?? map.getBoundsZoom(
+        [[refBB.southWest.lat, refBB.southWest.lng],
+         [refBB.northEast.lat, refBB.northEast.lng]],
+        false, [0, 0]
+      )) + zoomDelta;
+
+      map.setView([centerLat, centerLng], targetZoom, { animate: false });
+    } else {
+      // Navegação manual
+      const refBB      = snapshots[0].boundingBox;
+      const refLatSpan = Math.abs(refBB.northEast.lat - refBB.southWest.lat);
+      const curLatSpan = Math.abs(ne.lat - sw.lat);
+      const zoomDelta  = Math.log2(refLatSpan / curLatSpan);
+      const isMobile2   = window.innerWidth < 768;
+      const padTop2     = isMobile2 ? 64 : 40;
+      const padBottom2  = isMobile2 ? 148 : 40;
+      const padH2       = isMobile2 ? 16 : 40;
+      const baseZoom   = map.getBoundsZoom(
+        [[refBB.southWest.lat, refBB.southWest.lng],
+         [refBB.northEast.lat, refBB.northEast.lng]],
+        false,
+        L.point(padH2, Math.max(padTop2, padBottom2))
+      );
+      const centerLat = (ne.lat + sw.lat) / 2;
+      const centerLng = (ne.lng + sw.lng) / 2;
+      const targetZoom = baseZoom + zoomDelta;
+
+      map.setView([centerLat, centerLng], targetZoom, { animate: true });
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+//  POINT LIST (shared HTML builder)
+// ══════════════════════════════════════════════
+
+// Retorna o tipo "primário" de um ponto para exibição na lista
+// (independente dos toggles — a lista sempre mostra tudo)
+function primaryType(pt) {
+  if (pt.layers.has('added'))   return 'added';
+  if (pt.layers.has('removed')) return 'removed';
+  if (pt.layers.has('orphan'))  return 'orphan';
+  if (pt.layers.has('ignored')) return 'ignored';
+  if (pt.layers.has('kept'))    return 'kept';
+  if (pt.layers.has('source'))  return 'source';
+  return 'source';
+}
+
+// Monta badges de todas as layers do ponto
+function layerBadges(pt) {
+  const order = ['added','removed','orphan','ignored','kept','source'];
+  const icons  = { added:'▲', removed:'▼', kept:'●', source:'◉', orphan:'◆', ignored:'◆' };
+  return [...pt.layers]
+    .sort((a,b) => order.indexOf(a)-order.indexOf(b))
+    .map(l => `<span class="pe-tag ${l}">${icons[l]}</span>`)
+    .join('');
+}
+
+function buildPointListHTML(points) {
+  if (!points.length) return '<div style="padding:20px 16px;color:var(--muted);font-size:.8rem">Sem pontos.</div>';
+  const order = ['added','removed','orphan','ignored','kept','source'];
+  const sorted = [...points]
+    .sort((a,b) => order.indexOf(primaryType(a)) - order.indexOf(primaryType(b)));
+
+  // Renderiza TODOS os pontos — a visibilidade é controlada por applyListFilter()
+  const rows = sorted.map(pt => {
+    const ptype      = primaryType(pt);
+    const icons      = {added:'▲',removed:'▼',kept:'●',source:'◉',orphan:'◆',ignored:'◆'};
+    const layersAttr = [...pt.layers].join(',');
+    // serializa o ponto para o drawer de metadados
+    const ptJson     = encodeURIComponent(JSON.stringify({
+      id: pt.id, name: pt.name, lat: pt.lat, lng: pt.lng, metadata: pt.metadata || {}
+    }));
+    return `
+    <div class="point-entry ${ptype}" data-layers="${layersAttr}"
+         onclick="flyTo(${pt.lat},${pt.lng})"
+         ontouchend="this._moved||(openPointMeta('${ptJson}'),flyTo(${pt.lat},${pt.lng}));this._moved=false"
+         onmouseup="openPointMeta('${ptJson}')">
+      <div class="pe-icon ${ptype}">${icons[ptype]||'●'}</div>
+      <div class="pe-body">
+        <div class="pe-name ${pt.layers.has('removed')&&!pt.layers.has('added')?'struck':''}">${pt.name||'(sem nome)'}</div>
+        <div class="pe-id">${pt.id}</div>
+      </div>
+      <div style="display:flex;gap:3px;flex-shrink:0">${layerBadges(pt)}</div>
+    </div>`;
+  }).join('');
+
+  // Placeholder para nota de itens ocultos — atualizado por applyListFilter()
+  return rows + '<div class="hidden-note" style="display:none;padding:8px 16px;color:var(--muted2);font-size:.72rem;font-family:var(--mono)"></div>';
+}
+
+// Aplica o filtro de toggles diretamente no DOM das listas
+function applyListFilter() {
+  ['mobile-point-list', 'desktop-point-list'].forEach(listId => {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const entries = list.querySelectorAll('.point-entry[data-layers]');
+    let hiddenCount = 0;
+
+    entries.forEach(el => {
+      const layers = new Set(el.dataset.layers.split(','));
+      const visible = resolveRenderType(layers) !== null;
+      el.style.display = visible ? '' : 'none';
+      if (!visible) hiddenCount++;
+    });
+
+    // Atualiza a nota de ocultos
+    const note = list.querySelector('.hidden-note');
+    if (note) {
+      if (hiddenCount > 0) {
+        note.textContent = `+ ${hiddenCount} ponto${hiddenCount>1?'s':''} oculto${hiddenCount>1?'s':''} pelos filtros`;
+        note.style.display = '';
+      } else {
+        note.style.display = 'none';
+      }
+    }
+  });
+}
+
+function countPoints(points, snap) {
+  const c = { added:0, removed:0, kept:0, source:(snap.source?.points||[]).length, orphan:0, ignored:0 };
+  points.forEach(p => {
+    if (p.layers.has('added'))   c.added++;
+    if (p.layers.has('removed')) c.removed++;
+    if (p.layers.has('kept'))    c.kept++;
+    if (p.layers.has('orphan'))  c.orphan++;
+    if (p.layers.has('ignored')) c.ignored++;
+  });
+  return c;
+}
+
+// Atualiza apenas o alpha dos badges de stat sem reconstruir HTML
+function updateStatAlpha() {
+  const chipAlpha = l => layerVisible[l] ? '' : 'opacity:.3;';
+  // mobile chips — aplica estilo inline em cada chip já renderizado
+  ['added','removed','kept','source','orphan','ignored'].forEach(l => {
+    document.querySelectorAll(`.stat-chip.${l}`).forEach(el => {
+      el.style.opacity = layerVisible[l] ? '1' : '0.3';
+    });
+  });
+  // desktop stat values
+  ['added','removed','kept','source','orphan','ignored'].forEach(l => {
+    const el = document.getElementById(`ds-${l}`);
+    if (el) el.style.opacity = layerVisible[l] ? '1' : '0.3';
+  });
+}
+
+function renderPointList(points, snap) {
+  const html = buildPointListHTML(points);
+  const c    = countPoints(points, snap);
+
+  // mobile sheet
+  document.getElementById('mobile-point-list').innerHTML = html;
+  document.getElementById('desktop-point-list').innerHTML = html;
+
+  const chipAlpha = l => layerVisible[l] ? '' : 'opacity:.3;';
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-chip added"   style="${chipAlpha('added')}">▲${c.added}</div>
+    <div class="stat-chip removed" style="${chipAlpha('removed')}">▼${c.removed}</div>
+    <div class="stat-chip kept"    style="${chipAlpha('kept')}">●${c.kept}</div>
+    <div class="stat-chip source"  style="${chipAlpha('source')}">◉${c.source}</div>
+    ${c.orphan  ? `<div class="stat-chip orphan"  style="${chipAlpha('orphan')}">◆${c.orphan}</div>`  : ''}
+    ${c.ignored ? `<div class="stat-chip ignored" style="${chipAlpha('ignored')}">◆${c.ignored}</div>` : ''}
+  `;
+
+  const ds = document.getElementById('desktop-stats');
+  const applyAlpha = (id, layer) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = c[layer] ?? 0;
+    el.style.opacity = layerVisible[layer] ? '1' : '0.3';
+  };
+  applyAlpha('ds-added',   'added');
+  applyAlpha('ds-removed', 'removed');
+  applyAlpha('ds-kept',    'kept');
+  applyAlpha('ds-source',  'source');
+  applyAlpha('ds-orphan',  'orphan');
+  applyAlpha('ds-ignored', 'ignored');
+  ds.style.display = 'grid';
+
+  // Aplica filtro de visibilidade no DOM após renderizar
+  applyListFilter();
+}
+
+window.flyTo = function(lat, lng) {
+  if (lat==null||lng==null) return;
+  map.flyTo([lat,lng], 16, {duration:.6});
+  if (window.innerWidth < 768) setSheet('peek');
+};
+
+// ══════════════════════════════════════════════
+//  TIMELINE
+// ══════════════════════════════════════════════
+function buildTimeline() {
+  const bar = document.getElementById('timeline-bar');
+  if (!snapshots.length) {
+    bar.innerHTML = '<div style="color:var(--muted2);font-size:.75rem;padding:0 12px">Carregue JSONs.</div>';
+    return;
+  }
+  const maxA = Math.max(...snapshots.map(s=>(s.diff?.add||[]).length),1);
+  const maxR = Math.max(...snapshots.map(s=>(s.diff?.remove||[]).length),1);
+
+  bar.innerHTML = snapshots.map((s,i) => {
+    const a = (s.diff?.add||[]).length;
+    const r = (s.diff?.remove||[]).length;
+    const aH = Math.max(2, Math.round(a/maxA*26));
+    const rH = Math.max(2, Math.round(r/maxR*26));
+    const sep = i < snapshots.length-1 ? '<div class="tl-sep"></div>' : '';
+    return `<div class="tl-node" onclick="renderSnapshot(${i})">
+      <div class="tl-bars">
+        <div class="tl-bar-a" style="height:${aH}px"></div>
+        <div class="tl-bar-r" style="height:${rH}px"></div>
+      </div>
+      <div class="tl-idx">#${i+1}</div>
+      <div class="tl-delta">+${a} -${r}</div>
+    </div>${sep}`;
+  }).join('');
+
+  document.getElementById('snap-counter').innerHTML =
+    `<b>${snapshots.length}</b> snap${snapshots.length!==1?'s':''}`;
+}
+
+// ══════════════════════════════════════════════
+//  LOAD FILES
+// ══════════════════════════════════════════════
+function loadSnapshots(list) {
+  snapshots = list.sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+  // Persiste no sessionStorage para sobreviver a reloads
+  try {
+    sessionStorage.setItem('map-audit-snapshots', JSON.stringify(snapshots));
+  } catch(e) { /* quota exceeded — ignora */ }
+  buildTimeline();
+  document.getElementById('empty-overlay').classList.add('hidden');
+  renderSnapshot(0);
+}
+
+// Normaliza qualquer formato recebido para um array de snapshots
+function parseJSON(parsed, filename) {
+  // Formato 1 — envelope com "timeline": { timeline: [...snapshots] }
+  if (parsed && Array.isArray(parsed.timeline)) return parsed.timeline;
+  // Formato 2 — array direto: [...snapshots]
+  if (Array.isArray(parsed)) return parsed;
+  // Formato 3 — snapshot único: { requestId, timestamp, ... }
+  if (parsed && parsed.timestamp) return [parsed];
+  throw new Error(`Formato não reconhecido: ${filename}`);
+}
+
+function handleFiles(files) {
+  Promise.all([...files].map(f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        res(parseJSON(parsed, f.name));
+      } catch (err) { rej(new Error(`${f.name}: ${err.message}`)); }
+    };
+    r.readAsText(f);
+  }))).then(r => loadSnapshots(r.flat())).catch(e => alert(e.message));
+}
+
+// ══════════════════════════════════════════════
+//  BOTTOM SHEET (mobile)
+// ══════════════════════════════════════════════
+const sheet        = document.getElementById('sheet');
+const sheetOverlay = document.getElementById('sheet-overlay');
+let sheetState     = 'peek';
+
+function setSheet(state) {
+  sheetState = state;
+  sheet.classList.remove('mid', 'open');
+  if (state === 'mid')  sheet.classList.add('mid');
+  if (state === 'open') sheet.classList.add('open');
+  sheetOverlay.classList.toggle('visible', state !== 'peek');
+}
+
+// Overlay fecha ao tocar
+sheetOverlay.addEventListener('touchend', e => {
+  e.preventDefault();
+  setSheet('peek');
+}, {passive: false});
+sheetOverlay.addEventListener('click', () => setSheet('peek'));
+
+// Swipe/tap no handle
+const handle     = document.getElementById('sheet-handle');
+let   swipeStart = 0;
+
+handle.addEventListener('touchstart', e => {
+  swipeStart = e.touches[0].clientY;
+}, {passive: true});
+
+handle.addEventListener('touchend', e => {
+  const dy = e.changedTouches[0].clientY - swipeStart;
+  if (Math.abs(dy) < 12) {
+    // tap — cicla
+    setSheet(sheetState === 'peek' ? 'mid' : sheetState === 'mid' ? 'open' : 'peek');
+  } else if (dy < -30) {
+    setSheet(sheetState === 'peek' ? 'mid' : 'open');
+  } else if (dy > 30) {
+    setSheet(sheetState === 'open' ? 'mid' : 'peek');
+  }
+}, {passive: true});
+
+// Clique desktop
+handle.addEventListener('click', e => {
+  if (e.pointerType === 'touch') return; // já tratado no touchend
+  setSheet(sheetState === 'peek' ? 'mid' : sheetState === 'mid' ? 'open' : 'peek');
+});
+
+// ══════════════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════════════
+document.getElementById('btn-load').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('btn-load-empty').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); });
+
+function navPrev() { stopAnimIfPlaying(); if (currentIdx>0) renderSnapshot(currentIdx-1); }
+function navNext() { stopAnimIfPlaying(); if (currentIdx<snapshots.length-1) renderSnapshot(currentIdx+1); }
+
+document.getElementById('btn-prev').addEventListener('click', navPrev);
+document.getElementById('btn-next').addEventListener('click', navNext);
+document.getElementById('btn-prev-top').addEventListener('click', navPrev);
+document.getElementById('btn-next-top').addEventListener('click', navNext);
+
+
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft'  && currentIdx>0)                  { stopAnimIfPlaying(); renderSnapshot(currentIdx-1); }
+  if (e.key==='ArrowRight' && currentIdx<snapshots.length-1) { stopAnimIfPlaying(); renderSnapshot(currentIdx+1); }
+  if (e.key===' ') { e.preventDefault(); animPlaying ? stopAnim() : startAnim(); }
+});
+
+document.querySelectorAll('.layer-dot-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const l = btn.dataset.layer;
+    layerVisible[l] = !layerVisible[l];
+    btn.classList.toggle('off', !layerVisible[l]);
+    if (currentIdx >= 0) {
+      // Mapa: re-renderiza marcadores (também chama renderPointList internamente)
+      renderSnapshot(currentIdx);
+      // Lista: aplica filtro APÓS o renderSnapshot ter reconstruido o HTML
+      applyListFilter();
+      // Atualiza alpha dos badges de stat
+      updateStatAlpha();
+    }
+  });
+});
+
+// ══════════════════════════════════════════════
+//  METADATA DRAWER
+// ══════════════════════════════════════════════
+const metaDrawer      = document.getElementById('meta-drawer');
+const metaDrawerTitle = document.getElementById('meta-drawer-title');
+const metaDrawerBody  = document.getElementById('meta-drawer-body');
+
+// Contador global para IDs únicos de sub-árvores
+let _metaTreeId = 0;
+
+function renderMetaValue(k, v) {
+  // Valor string simples
+  if (typeof v === 'string') {
+    return `<div class="meta-node">
+      <span class="meta-key">${k}</span>
+      <span class="meta-colon">:</span>
+      <span class="meta-value">${v}</span>
+    </div>`;
+  }
+  // Valor objeto (Map<String,String>)
+  if (typeof v === 'object' && v !== null) {
+    const id       = `mt-${++_metaTreeId}`;
+    const subRows  = Object.entries(v).map(([sk, sv]) => `
+      <div class="meta-subtree-row">
+        <span class="meta-sub-key">${sk}</span>
+        <span class="meta-sub-colon">:</span>
+        <span class="meta-sub-value">${sv}</span>
+      </div>`).join('');
+    const count = Object.keys(v).length;
+    return `<div class="meta-node-map">
+      <div class="meta-node-map-header" onclick="toggleMetaSubtree('${id}')">
+        <span class="meta-map-key">${k}</span>
+        <span class="meta-colon">:</span>
+        <span class="meta-map-arrow" id="arr-${id}">▶</span>
+        <span class="meta-map-type">{${count}}</span>
+      </div>
+      <div class="meta-subtree" id="${id}">${subRows}</div>
+    </div>`;
+  }
+  return '';
+}
+
+window.toggleMetaSubtree = function(id) {
+  const el  = document.getElementById(id);
+  const arr = document.getElementById(`arr-${id}`);
+  if (!el) return;
+  const isOpen = el.classList.toggle('open');
+  arr?.classList.toggle('open', isOpen);
+};
+
+function buildMetaTree(sections) {
+  return sections.map(sec => {
+    const entries   = sec.meta ? Object.entries(sec.meta) : [];
+    const extraRows = (sec.extra || []).map(e =>
+      `<div class="meta-node">
+        <span class="meta-key">${e.label}</span>
+        <span class="meta-colon">:</span>
+        <span class="meta-value">${e.value}</span>
+      </div>`
+    ).join('');
+    const metaRows = entries.length
+      ? entries.map(([k, v]) => renderMetaValue(k, v)).join('')
+      : `<div class="meta-empty">sem metadados</div>`;
+
+    return `<div class="meta-section">
+      <div class="meta-section-title">${sec.title}</div>
+      <div class="meta-tree">${extraRows}${metaRows}</div>
+    </div>`;
+  }).join('');
+}
+
+function openMetaDrawer(title, sections) {
+  metaDrawerTitle.textContent = title;
+  metaDrawerBody.innerHTML    = buildMetaTree(sections);
+  metaDrawer.classList.add('open');
+}
+
+function closeMetaDrawer() {
+  metaDrawer.classList.remove('open');
+}
+
+document.getElementById('meta-drawer-close').addEventListener('click', closeMetaDrawer);
+
+// Botão META no topbar — abre metadados do step atual
+document.getElementById('btn-step-meta').addEventListener('click', () => {
+  if (currentIdx < 0) return;
+  const snap = snapshots[currentIdx];
+  const meta = snap.metadata || {};
+  openMetaDrawer(`Step #${currentIdx + 1} — ${snap.requestId}`, [
+    {
+      title: 'Identificação',
+      meta: null,
+      extra: [
+        { label: 'requestId', value: snap.requestId },
+        { label: 'timestamp', value: new Date(snap.timestamp).toLocaleString('pt-BR') },
+      ]
+    },
+    {
+      title: 'BoundingBox',
+      meta: null,
+      extra: [
+        { label: 'NE lat', value: snap.boundingBox.northEast.lat },
+        { label: 'NE lng', value: snap.boundingBox.northEast.lng },
+        { label: 'SW lat', value: snap.boundingBox.southWest.lat },
+        { label: 'SW lng', value: snap.boundingBox.southWest.lng },
+      ]
+    },
+    { title: 'Metadata', meta }
+  ]);
+});
+
+// Tocar num ponto da lista abre os metadados do ponto
+window.openPointMeta = function(ptJson) {
+  const pt = JSON.parse(decodeURIComponent(ptJson));
+  const meta = pt.metadata || {};
+  openMetaDrawer(pt.name || pt.id, [
+    {
+      title: 'Identificação',
+      meta: null,
+      extra: [
+        { label: 'id',   value: pt.id },
+        { label: 'name', value: pt.name || '—' },
+        { label: 'lat',  value: pt.lat  != null ? pt.lat.toFixed(6)  : '—' },
+        { label: 'lng',  value: pt.lng  != null ? pt.lng.toFixed(6)  : '—' },
+      ]
+    },
+    { title: 'Metadata', meta }
+  ]);
+};
+
+// ══════════════════════════════════════════════
+//  ANIMATION MODE
+// ══════════════════════════════════════════════
+let animTimer    = null;
+let animMs       = 1000;
+let animPlaying  = false;
+let animProgress = 0;
+let animRafId    = null;
+let animStart    = null;
+let animBaseZoom = null;   // zoom fixado ao iniciar a animação
+
+const btnPlay       = document.getElementById('btn-play');
+const speedPanel    = document.getElementById('speed-panel');
+const progressBar   = document.getElementById('anim-progress-bar');
+
+// Multiplicador de velocidade: 1 = tempo real, 2 = 2x mais rápido, etc.
+let animSpeed = 1;
+
+function setAnimSpeed(multiplier) {
+  animSpeed = multiplier;
+  document.querySelectorAll('.speed-opt').forEach(b => {
+    b.classList.toggle('active', parseFloat(b.dataset.speed) === multiplier);
+  });
+}
+
+// Retorna o delay em ms até o próximo step, respeitando o multiplicador
+function delayToNext(fromIdx) {
+  const next = fromIdx + 1;
+  if (next >= snapshots.length) return 0;
+  const t0 = new Date(snapshots[fromIdx].timestamp).getTime();
+  const t1 = new Date(snapshots[next].timestamp).getTime();
+  const delta = Math.max(200, t1 - t0); // mínimo 200ms para ser legível
+  return delta / animSpeed;
+}
+
+function animStep() {
+  if (!animPlaying) return;
+  const next = currentIdx + 1;
+  if (next >= snapshots.length) {
+    stopAnim();
+    return;
+  }
+  renderSnapshot(next);
+  scheduleNext();
+}
+
+function scheduleNext() {
+  animMs    = delayToNext(currentIdx);
+  animStart = performance.now();
+  cancelAnimationFrame(animRafId);
+  animRafId = requestAnimationFrame(tickProgress);
+}
+
+function tickProgress(now) {
+  if (!animPlaying) return;
+  const elapsed = now - animStart;
+  const pct     = Math.min(100, (elapsed / animMs) * 100);
+  progressBar.style.width = pct + '%';
+  if (elapsed >= animMs) {
+    progressBar.style.width = '0%';
+    animStep();
+  } else {
+    animRafId = requestAnimationFrame(tickProgress);
+  }
+}
+
+function startAnim() {
+  if (!snapshots.length) return;
+
+  // Calcular e fixar o zoom base UMA ÚNICA VEZ antes da animação começar
+  const refBB = snapshots[0].boundingBox;
+  // Padding dinâmico baseado nos elementos reais da UI
+  const isMobile = window.innerWidth < 768;
+  const layerPillH  = 48;  // altura aproximada da layer pill
+  const sheetPeekH  = 72;  // altura da bottom sheet em peek
+  const navBtnH     = 60;  // altura dos botões de nav
+  const padTop      = isMobile ? layerPillH + 16 : 40;
+  const padBottom   = isMobile ? sheetPeekH + navBtnH + 16 : 40;
+  const padH        = isMobile ? 16 : 40;
+  animBaseZoom = map.getBoundsZoom(
+    [[refBB.southWest.lat, refBB.southWest.lng],
+     [refBB.northEast.lat, refBB.northEast.lng]],
+    false,
+    L.point(padH, Math.max(padTop, padBottom))
+  );
+
+
+
+  animPlaying = true;
+  btnPlay.textContent = '⏹ Stop';
+  btnPlay.classList.add('playing');
+  speedPanel.classList.add('open');
+  if (currentIdx >= snapshots.length - 1) renderSnapshot(0);
+  scheduleNext();
+}
+
+function stopAnim() {
+  animPlaying  = false;
+  animBaseZoom = null;
+  cancelAnimationFrame(animRafId);
+  progressBar.style.width = '0%';
+  btnPlay.textContent = '▶ Play';
+  btnPlay.classList.remove('playing');
+}
+
+btnPlay.addEventListener('click', () => {
+  if (animPlaying) stopAnim();
+  else startAnim();
+});
+
+document.addEventListener('click', e => {
+  if (!speedPanel.contains(e.target) && e.target !== btnPlay) {
+    if (!animPlaying) speedPanel.classList.remove('open');
+  }
+});
+
+document.querySelectorAll('.speed-opt').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    setAnimSpeed(parseFloat(btn.dataset.speed));
+    if (animPlaying) {
+      cancelAnimationFrame(animRafId);
+      scheduleNext();
+    }
+  });
+});
+
+// Parar animação ao navegar manualmente
+function stopAnimIfPlaying() {
+  if (animPlaying) stopAnim();
+}
+
+// ══════════════════════════════════════════════
+//  LEGEND PANEL
+// ══════════════════════════════════════════════
+const legendPanel = document.getElementById('legend-panel');
+const btnLegend   = document.getElementById('btn-legend');
+
+btnLegend.addEventListener('click', e => {
+  e.stopPropagation();
+  legendPanel.classList.toggle('open');
+  btnLegend.style.color = legendPanel.classList.contains('open') ? 'var(--source)' : 'var(--muted)';
+  btnLegend.style.borderColor = legendPanel.classList.contains('open') ? 'var(--source)' : '';
+});
+
+document.addEventListener('click', e => {
+  if (!legendPanel.contains(e.target) && e.target !== btnLegend) {
+    legendPanel.classList.remove('open');
+    btnLegend.style.color = 'var(--muted)';
+    btnLegend.style.borderColor = '';
+  }
+});
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+
+// Redimensiona o mapa quando a janela muda de tamanho (ex: desktop ↔ mobile)
+window.addEventListener('resize', () => {
+  map.invalidateSize();
+  if (currentIdx >= 0) renderSnapshot(currentIdx);
+});
+
+// Restaura snapshots do sessionStorage se existirem (sobrevive a reloads)
+try {
+  const saved = sessionStorage.getItem('map-audit-snapshots');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed) && parsed.length) {
+      loadSnapshots(parsed);
+    } else {
+      buildTimeline();
+    }
+  } else {
+    buildTimeline();
+  }
+} catch(e) {
+  buildTimeline();
+}
+</script>
+</body>
+</html>
