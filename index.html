@@ -614,6 +614,108 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ══ PASTE MODAL ══ */
+.paste-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  backdrop-filter: blur(4px);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.paste-modal.open {
+  opacity: 1;
+  pointer-events: all;
+}
+.paste-box {
+  background: var(--surf);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.6);
+}
+.paste-box-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.paste-box-title {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.paste-box-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.paste-box-close:hover { color: var(--text); background: var(--surf2); }
+.paste-textarea {
+  width: 100%;
+  height: 220px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .75rem;
+  padding: 10px 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color .15s;
+}
+.paste-textarea:focus { border-color: var(--source); }
+.paste-textarea::placeholder { color: var(--muted2); }
+.paste-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.paste-btn-cancel {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: .82rem;
+  cursor: pointer;
+}
+.paste-btn-cancel:hover { border-color: var(--border2); color: var(--text); }
+.paste-btn-load {
+  background: var(--source);
+  border: none;
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px 18px;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.paste-btn-load:hover { background: #2563eb; }
+.paste-error {
+  font-size: .75rem;
+  color: var(--removed);
+  font-family: var(--mono);
+  display: none;
+}
+.paste-error.visible { display: block; }
+
 /* ══ METADATA DRAWER ══ */
 .meta-drawer {
   position: fixed;
@@ -1007,6 +1109,7 @@ html, body {
   <button class="btn-play" id="btn-play" title="Modo animação">▶ Play</button>
 
   <div class="topbar-actions">
+    <button class="icon-btn" id="btn-paste" title="Colar JSON" style="font-size:.8rem">📋</button>
     <button class="meta-step-btn" id="btn-step-meta" title="Metadados do step">META</button>
     <button class="icon-btn" id="btn-legend" title="Legenda" style="font-size:.8rem; font-weight:700; color:var(--muted)">?</button>
     <button class="icon-btn primary" id="btn-load" title="Carregar JSONs">
@@ -1153,6 +1256,23 @@ html, body {
   </div>
 </div>
 
+<!-- PASTE MODAL -->
+<div class="paste-modal" id="paste-modal">
+  <div class="paste-box">
+    <div class="paste-box-header">
+      <div class="paste-box-title">📋 Colar JSON</div>
+      <button class="paste-box-close" id="paste-close">✕</button>
+    </div>
+    <textarea class="paste-textarea" id="paste-textarea"
+      placeholder='Cole aqui o JSON no formato { "timeline": [...] } ou um array direto [...]'></textarea>
+    <div class="paste-error" id="paste-error"></div>
+    <div class="paste-actions">
+      <button class="paste-btn-cancel" id="paste-cancel">Cancelar</button>
+      <button class="paste-btn-load" id="paste-confirm">Carregar</button>
+    </div>
+  </div>
+</div>
+
 <!-- SPEED PANEL -->
 <div class="speed-panel" id="speed-panel">
   <div class="speed-label">Velocidade de animação</div>
@@ -1223,6 +1343,7 @@ html, body {
   <div class="empty-title">Nenhum snapshot</div>
   <div class="empty-sub">Carregue arquivos JSON para iniciar a auditoria de movimentos</div>
   <button class="empty-btn" id="btn-load-empty">Carregar JSONs</button>
+  <button class="empty-btn" id="btn-paste-empty" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text)">📋 Colar JSON</button>
 </div>
 
 <script>
@@ -1986,6 +2107,59 @@ window.openPointMeta = function(ptJson) {
     { title: 'Metadata', meta }
   ]);
 };
+
+// ══════════════════════════════════════════════
+//  PASTE MODAL
+// ══════════════════════════════════════════════
+const pasteModal    = document.getElementById('paste-modal');
+const pasteTextarea = document.getElementById('paste-textarea');
+const pasteError    = document.getElementById('paste-error');
+
+function openPasteModal() {
+  pasteTextarea.value = '';
+  pasteError.classList.remove('visible');
+  pasteModal.classList.add('open');
+  setTimeout(() => pasteTextarea.focus(), 150);
+}
+
+function closePasteModal() {
+  pasteModal.classList.remove('open');
+}
+
+function confirmPaste() {
+  const raw = pasteTextarea.value.trim();
+  if (!raw) {
+    pasteError.textContent = 'Cole um JSON válido antes de carregar.';
+    pasteError.classList.add('visible');
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const list   = parseJSON(parsed, 'paste');
+    if (!list.length) throw new Error('Nenhum snapshot encontrado.');
+    closePasteModal();
+    loadSnapshots(list);
+  } catch (e) {
+    pasteError.textContent = `Erro: ${e.message}`;
+    pasteError.classList.add('visible');
+  }
+}
+
+document.getElementById('btn-paste').addEventListener('click', openPasteModal);
+document.getElementById('btn-paste-empty').addEventListener('click', openPasteModal);
+document.getElementById('paste-close').addEventListener('click', closePasteModal);
+document.getElementById('paste-cancel').addEventListener('click', closePasteModal);
+document.getElementById('paste-confirm').addEventListener('click', confirmPaste);
+
+// Fechar ao clicar fora
+pasteModal.addEventListener('click', e => {
+  if (e.target === pasteModal) closePasteModal();
+});
+
+// Ctrl+Enter confirma
+pasteTextarea.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmPaste();
+});
 
 // ══════════════════════════════════════════════
 //  ANIMATION MODE
