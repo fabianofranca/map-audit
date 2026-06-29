@@ -147,7 +147,15 @@ html, body {
 .nav-btn:active { background: var(--surf2); }
 .nav-btn:disabled { opacity: .25; pointer-events: none; }
 
-/* Zoom control — dark theme + posição correta */
+/* Marcador de centro */
+.leaflet-center-marker {
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+}
+
+/* ══ Zoom control — dark theme + posição correta ══ */
 .leaflet-control-zoom {
   border: 1px solid var(--border2) !important;
   border-radius: 8px !important;
@@ -1418,6 +1426,7 @@ let snapshots    = [];
 let currentIdx   = -1;
 let activeMarkers = [];
 let bboxLayer    = null;
+let centerMarker = null;
 const layerVisible = { added:true, removed:true, kept:true, source:true, bbox:true, orphan:true, ignored:true };
 
 // ══════════════════════════════════════════════
@@ -1608,7 +1617,8 @@ function renderSnapshot(idx) {
   currentIdx = idx;
   activeMarkers.forEach(m => map.removeLayer(m));
   activeMarkers = [];
-  if (bboxLayer) { map.removeLayer(bboxLayer); bboxLayer = null; }
+  if (bboxLayer)    { map.removeLayer(bboxLayer);    bboxLayer    = null; }
+  if (centerMarker) { map.removeLayer(centerMarker); centerMarker = null; }
 
   const snap   = snapshots[idx];
   const points = classify(snap);
@@ -1620,6 +1630,17 @@ function renderSnapshot(idx) {
       color:'#facc15', weight:1.5, dashArray:'5 5',
       fillColor:'#facc15', fillOpacity:.04, interactive:false
     }).addTo(map);
+  }
+
+  // Center marker (quando não há bbox ou como complemento)
+  if (layerVisible.bbox && snap.center && !snap.boundingBox) {
+    const { lat, lng } = snap.center;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="8" fill="none" stroke="#facc15" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <circle cx="10" cy="10" r="2.5" fill="#facc15"/>
+    </svg>`;
+    const icon = L.divIcon({ html: svg, className: 'leaflet-center-marker', iconSize: [20,20], iconAnchor: [10,10] });
+    centerMarker = L.marker([lat, lng], { icon, interactive: false }).addTo(map);
   }
 
   // Markers
@@ -1660,8 +1681,11 @@ function renderSnapshot(idx) {
   document.getElementById('btn-next-top').disabled   = idx===snapshots.length-1;
 
 
-  // Fit
-  if (snap.boundingBox) {
+  // Fit — prioriza bbox, fallback para center
+  const hasBbox = !!snap.boundingBox;
+  const hasCenter = !!snap.center;
+
+  if (hasBbox) {
     const {northEast:ne,southWest:sw} = snap.boundingBox;
     if (animPlaying) {
       // Modo animação — simula a tela do device:
@@ -1712,6 +1736,13 @@ function renderSnapshot(idx) {
       const targetZoom = baseZoom + zoomDelta;
 
       map.setView([centerLat, centerLng], targetZoom, { animate: true });
+    }
+  } else if (hasCenter) {
+    // Sem bbox — posiciona no ponto central mantendo zoom atual ou padrão
+    if (animPlaying) {
+      map.setView([snap.center.lat, snap.center.lng], map.getZoom(), { animate: false });
+    } else {
+      map.setView([snap.center.lat, snap.center.lng], map.getZoom() || 14, { animate: true });
     }
   }
 }
@@ -2091,7 +2122,7 @@ window.toggleMetaSubtree = function(id) {
 };
 
 function buildMetaTree(sections) {
-  return sections.map(sec => {
+  return sections.filter(Boolean).map(sec => {
     const entries   = sec.meta ? Object.entries(sec.meta) : [];
     const extraRows = (sec.extra || []).map(e =>
       `<div class="meta-node">
@@ -2137,7 +2168,7 @@ document.getElementById('btn-step-meta').addEventListener('click', () => {
         { label: 'timestamp', value: new Date(snap.timestamp).toLocaleString('pt-BR') },
       ]
     },
-    {
+    snap.boundingBox ? {
       title: 'BoundingBox',
       meta: null,
       extra: [
@@ -2146,7 +2177,15 @@ document.getElementById('btn-step-meta').addEventListener('click', () => {
         { label: 'SW lat', value: snap.boundingBox.southWest.lat },
         { label: 'SW lng', value: snap.boundingBox.southWest.lng },
       ]
-    },
+    } : null,
+    snap.center ? {
+      title: 'Center',
+      meta: null,
+      extra: [
+        { label: 'lat', value: snap.center.lat },
+        { label: 'lng', value: snap.center.lng },
+      ]
+    } : null,
     { title: 'Metadata', meta }
   ]);
 });
