@@ -953,90 +953,7 @@ html, body {
 }
 .meta-step-btn:active { background: var(--border2); }
 
-/* Botão de animação */
-.btn-play {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: transparent;
-  border: 1px solid var(--border2);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 9px;
-  font-size: .75rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color .15s, border-color .15s, background .15s;
-  flex-shrink: 0;
-}
-.btn-play:hover { border-color: var(--added); color: var(--added); }
-.btn-play.playing {
-  background: #0d2518;
-  border-color: var(--added);
-  color: var(--added);
-}
 
-/* Painel de velocidade */
-.speed-panel {
-  position: fixed;
-  top: calc(var(--topbar-h) + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(13,15,20,.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border2);
-  border-radius: 10px;
-  padding: 10px 14px;
-  z-index: 510;
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 220px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.5);
-}
-.speed-panel.open { display: flex; }
-
-.speed-label {
-  font-size: .68rem;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  color: var(--muted);
-  font-weight: 700;
-}
-.speed-options {
-  display: flex;
-  gap: 5px;
-}
-.speed-opt {
-  flex: 1;
-  padding: 5px 0;
-  border-radius: 5px;
-  border: 1px solid var(--border2);
-  background: var(--surf2);
-  color: var(--muted);
-  font-size: .72rem;
-  font-weight: 700;
-  cursor: pointer;
-  text-align: center;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.speed-opt:hover { border-color: var(--added); color: var(--added); }
-.speed-opt.active { background: #0d2518; border-color: var(--added); color: var(--added); }
-
-.anim-progress {
-  height: 2px;
-  background: var(--border2);
-  border-radius: 1px;
-  overflow: hidden;
-}
-.anim-progress-bar {
-  height: 100%;
-  background: var(--added);
-  border-radius: 1px;
-  transition: width .1s linear;
-  width: 0%;
-}
 
 /* Navegação no topbar — só desktop */
 .topbar-nav {
@@ -1323,21 +1240,6 @@ html, body {
       <button class="paste-btn-cancel" id="paste-cancel">Cancelar</button>
       <button class="paste-btn-load" id="paste-confirm">Carregar</button>
     </div>
-  </div>
-</div>
-
-<!-- SPEED PANEL -->
-<div class="speed-panel" id="speed-panel">
-  <div class="speed-label">Velocidade de animação</div>
-  <div class="speed-options">
-    <button class="speed-opt" data-speed="0.5">0.5×</button>
-    <button class="speed-opt active" data-speed="1">1×</button>
-    <button class="speed-opt" data-speed="2">2×</button>
-    <button class="speed-opt" data-speed="4">4×</button>
-    <button class="speed-opt" data-speed="10">10×</button>
-  </div>
-  <div class="anim-progress">
-    <div class="anim-progress-bar" id="anim-progress-bar"></div>
   </div>
 </div>
 
@@ -1687,63 +1589,9 @@ function renderSnapshot(idx) {
 
   if (hasBbox) {
     const {northEast:ne,southWest:sw} = snap.boundingBox;
-    if (animPlaying) {
-      // Modo animação — simula a tela do device:
-      // O bbox amarelo tem sempre o mesmo tamanho na tela (= tela física do device).
-      // Quando o usuário deu zoom in, o bbox geográfico encolheu.
-      // Para exibir corretamente, o Leaflet precisa dar zoom in proporcional
-      // para que o bbox menor caiba no mesmo retângulo amarelo.
-      //
-      // Solução: calcular o zoom que faz o bbox ATUAL caber no mesmo espaço
-      // em pixels que o bbox de referência (step 1) ocupa no container.
-      // Isso equivale a: zoomAtual = getBoundsZoom(bboxRef) + log2(refSpan/curSpan)
-      // que é o mesmo que: getBoundsZoom(bboxAtual) no tamanho do container
-      // mas forçando o mesmo tamanho de pixel que o ref.
-      const centerLat = (ne.lat + sw.lat) / 2;
-      const centerLng = (ne.lng + sw.lng) / 2;
-
-      // Zoom fixado no startAnim + delta proporcional ao encolhimento do bbox
-      // animBaseZoom foi calculado com o container em tamanho estável (antes de resize mobile)
-      const refBB      = snapshots[0].boundingBox;
-      const refLatSpan = Math.abs(refBB.northEast.lat - refBB.southWest.lat);
-      const curLatSpan = Math.abs(ne.lat - sw.lat);
-      const zoomDelta  = Math.log2(refLatSpan / curLatSpan);
-      const targetZoom = (animBaseZoom ?? map.getBoundsZoom(
-        [[refBB.southWest.lat, refBB.southWest.lng],
-         [refBB.northEast.lat, refBB.northEast.lng]],
-        false, [0, 0]
-      )) + zoomDelta;
-
-      map.setView([centerLat, centerLng], targetZoom, { animate: false });
-    } else {
-      // Navegação manual
-      const refBB      = snapshots[0].boundingBox;
-      const refLatSpan = Math.abs(refBB.northEast.lat - refBB.southWest.lat);
-      const curLatSpan = Math.abs(ne.lat - sw.lat);
-      const zoomDelta  = Math.log2(refLatSpan / curLatSpan);
-      const isMobile2   = window.innerWidth < 768;
-      const padTop2     = isMobile2 ? 64 : 40;
-      const padBottom2  = isMobile2 ? 148 : 40;
-      const padH2       = isMobile2 ? 16 : 40;
-      const baseZoom   = map.getBoundsZoom(
-        [[refBB.southWest.lat, refBB.southWest.lng],
-         [refBB.northEast.lat, refBB.northEast.lng]],
-        false,
-        L.point(padH2, Math.max(padTop2, padBottom2))
-      );
-      const centerLat = (ne.lat + sw.lat) / 2;
-      const centerLng = (ne.lng + sw.lng) / 2;
-      const targetZoom = baseZoom + zoomDelta;
-
-      map.setView([centerLat, centerLng], targetZoom, { animate: true });
-    }
+    map.fitBounds([[sw.lat,sw.lng],[ne.lat,ne.lng]], { padding: [40, 40], animate: true });
   } else if (hasCenter) {
-    // Sem bbox — posiciona no ponto central mantendo zoom atual ou padrão
-    if (animPlaying) {
-      map.setView([snap.center.lat, snap.center.lng], map.getZoom(), { animate: false });
-    } else {
-      map.setView([snap.center.lat, snap.center.lng], map.getZoom() || 14, { animate: true });
-    }
+    map.setView([snap.center.lat, snap.center.lng], map.getZoom() || 14, { animate: true });
   }
 }
 
@@ -2030,8 +1878,8 @@ document.getElementById('btn-load').addEventListener('click', () => document.get
 document.getElementById('btn-load-empty').addEventListener('click', () => document.getElementById('file-input').click());
 document.getElementById('file-input').addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); });
 
-function navPrev() { stopAnimIfPlaying(); if (currentIdx>0) renderSnapshot(currentIdx-1); }
-function navNext() { stopAnimIfPlaying(); if (currentIdx<snapshots.length-1) renderSnapshot(currentIdx+1); }
+function navPrev() { if (currentIdx>0) renderSnapshot(currentIdx-1); }
+function navNext() { if (currentIdx<snapshots.length-1) renderSnapshot(currentIdx+1); }
 
 document.getElementById('btn-prev').addEventListener('click', navPrev);
 document.getElementById('btn-next').addEventListener('click', navNext);
@@ -2040,9 +1888,8 @@ document.getElementById('btn-next-top').addEventListener('click', navNext);
 
 
 document.addEventListener('keydown', e => {
-  if (e.key==='ArrowLeft'  && currentIdx>0)                  { stopAnimIfPlaying(); renderSnapshot(currentIdx-1); }
-  if (e.key==='ArrowRight' && currentIdx<snapshots.length-1) { stopAnimIfPlaying(); renderSnapshot(currentIdx+1); }
-  if (e.key===' ') { e.preventDefault(); animPlaying ? stopAnim() : startAnim(); }
+  if (e.key==='ArrowLeft'  && currentIdx>0)                    renderSnapshot(currentIdx-1);
+  if (e.key==='ArrowRight' && currentIdx<snapshots.length-1)   renderSnapshot(currentIdx+1);
 });
 
 document.querySelectorAll('.layer-dot-btn').forEach(btn => {
@@ -2261,138 +2108,6 @@ pasteModal.addEventListener('click', e => {
 pasteTextarea.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmPaste();
 });
-
-// ══════════════════════════════════════════════
-//  ANIMATION MODE
-// ══════════════════════════════════════════════
-let animTimer    = null;
-let animMs       = 1000;
-let animPlaying  = false;
-let animProgress = 0;
-let animRafId    = null;
-let animStart    = null;
-let animBaseZoom = null;   // zoom fixado ao iniciar a animação
-
-const btnPlay       = document.getElementById('btn-play');
-const speedPanel    = document.getElementById('speed-panel');
-const progressBar   = document.getElementById('anim-progress-bar');
-
-// Multiplicador de velocidade: 1 = tempo real, 2 = 2x mais rápido, etc.
-let animSpeed = 1;
-
-function setAnimSpeed(multiplier) {
-  animSpeed = multiplier;
-  document.querySelectorAll('.speed-opt').forEach(b => {
-    b.classList.toggle('active', parseFloat(b.dataset.speed) === multiplier);
-  });
-}
-
-// Retorna o delay em ms até o próximo step, respeitando o multiplicador
-function delayToNext(fromIdx) {
-  const next = fromIdx + 1;
-  if (next >= snapshots.length) return 0;
-  const t0 = new Date(snapshots[fromIdx].timestamp).getTime();
-  const t1 = new Date(snapshots[next].timestamp).getTime();
-  const delta = Math.max(200, t1 - t0); // mínimo 200ms para ser legível
-  return delta / animSpeed;
-}
-
-function animStep() {
-  if (!animPlaying) return;
-  const next = currentIdx + 1;
-  if (next >= snapshots.length) {
-    stopAnim();
-    return;
-  }
-  renderSnapshot(next);
-  scheduleNext();
-}
-
-function scheduleNext() {
-  animMs    = delayToNext(currentIdx);
-  animStart = performance.now();
-  cancelAnimationFrame(animRafId);
-  animRafId = requestAnimationFrame(tickProgress);
-}
-
-function tickProgress(now) {
-  if (!animPlaying) return;
-  const elapsed = now - animStart;
-  const pct     = Math.min(100, (elapsed / animMs) * 100);
-  progressBar.style.width = pct + '%';
-  if (elapsed >= animMs) {
-    progressBar.style.width = '0%';
-    animStep();
-  } else {
-    animRafId = requestAnimationFrame(tickProgress);
-  }
-}
-
-function startAnim() {
-  if (!snapshots.length) return;
-
-  // Calcular e fixar o zoom base UMA ÚNICA VEZ antes da animação começar
-  const refBB = snapshots[0].boundingBox;
-  // Padding dinâmico baseado nos elementos reais da UI
-  const isMobile = window.innerWidth < 768;
-  const layerPillH  = 48;  // altura aproximada da layer pill
-  const sheetPeekH  = 72;  // altura da bottom sheet em peek
-  const navBtnH     = 60;  // altura dos botões de nav
-  const padTop      = isMobile ? layerPillH + 16 : 40;
-  const padBottom   = isMobile ? sheetPeekH + navBtnH + 16 : 40;
-  const padH        = isMobile ? 16 : 40;
-  animBaseZoom = map.getBoundsZoom(
-    [[refBB.southWest.lat, refBB.southWest.lng],
-     [refBB.northEast.lat, refBB.northEast.lng]],
-    false,
-    L.point(padH, Math.max(padTop, padBottom))
-  );
-
-
-
-  animPlaying = true;
-  btnPlay.textContent = '⏹ Stop';
-  btnPlay.classList.add('playing');
-  speedPanel.classList.add('open');
-  if (currentIdx >= snapshots.length - 1) renderSnapshot(0);
-  scheduleNext();
-}
-
-function stopAnim() {
-  animPlaying  = false;
-  animBaseZoom = null;
-  cancelAnimationFrame(animRafId);
-  progressBar.style.width = '0%';
-  btnPlay.textContent = '▶ Play';
-  btnPlay.classList.remove('playing');
-}
-
-btnPlay.addEventListener('click', () => {
-  if (animPlaying) stopAnim();
-  else startAnim();
-});
-
-document.addEventListener('click', e => {
-  if (!speedPanel.contains(e.target) && e.target !== btnPlay) {
-    if (!animPlaying) speedPanel.classList.remove('open');
-  }
-});
-
-document.querySelectorAll('.speed-opt').forEach(btn => {
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    setAnimSpeed(parseFloat(btn.dataset.speed));
-    if (animPlaying) {
-      cancelAnimationFrame(animRafId);
-      scheduleNext();
-    }
-  });
-});
-
-// Parar animação ao navegar manualmente
-function stopAnimIfPlaying() {
-  if (animPlaying) stopAnim();
-}
 
 // ══════════════════════════════════════════════
 //  LEGEND PANEL
