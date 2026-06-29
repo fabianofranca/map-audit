@@ -622,6 +622,40 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ══ DROP OVERLAY ══ */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.15);
+  border: 3px dashed var(--source);
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+  backdrop-filter: blur(2px);
+}
+.drop-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+.drop-overlay-icon {
+  color: var(--source);
+}
+.drop-overlay-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--source);
+}
+.drop-overlay-sub {
+  font-size: .8rem;
+  color: var(--muted);
+}
+
 /* ══ PASTE MODAL ══ */
 .paste-modal {
   position: fixed;
@@ -1224,6 +1258,18 @@ html, body {
       </div>
     </div>
   </div>
+</div>
+
+<!-- DROP OVERLAY -->
+<div class="drop-overlay" id="drop-overlay">
+  <div class="drop-overlay-icon">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+      <path d="M24 4v28M14 22l10 10 10-10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8 36v4a2 2 0 002 2h28a2 2 0 002-2v-4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div class="drop-overlay-title">Solte o arquivo JSON</div>
+  <div class="drop-overlay-sub">Formatos aceitos: { timeline: [...] } · [...] · snapshot único</div>
 </div>
 
 <!-- PASTE MODAL -->
@@ -2107,6 +2153,37 @@ pasteModal.addEventListener('click', e => {
 // Ctrl+Enter confirma
 pasteTextarea.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmPaste();
+});
+
+// ══════════════════════════════════════════════
+//  DRAG & DROP
+// ══════════════════════════════════════════════
+const dropOverlay = document.getElementById('drop-overlay');
+let dragCounter   = 0;  // contador para ignorar drag entre elementos filhos
+
+document.addEventListener('dragenter', e => {
+  e.preventDefault();
+  dragCounter++;
+  if (dragCounter === 1) dropOverlay.classList.add('active');
+});
+
+document.addEventListener('dragleave', e => {
+  dragCounter--;
+  if (dragCounter === 0) dropOverlay.classList.remove('active');
+});
+
+document.addEventListener('dragover', e => {
+  e.preventDefault(); // necessário para permitir o drop
+});
+
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  dragCounter = 0;
+  dropOverlay.classList.remove('active');
+
+  const files = [...e.dataTransfer.files].filter(f => f.name.endsWith('.json') || f.type === 'application/json');
+  if (!files.length) return;
+  handleFiles(files);
 });
 
 // ══════════════════════════════════════════════
